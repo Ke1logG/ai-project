@@ -4,7 +4,7 @@ spring:
   ai:
     openai:
       api-key: ${ALI-API-KEY}
-      base-url: https://dashscope.aliyuncs.com/compatible-mode/v1
+      base-url: https://maas.qianwenaiapi.com/compatible-mode/v1
       chat:
         model: qwen3.8-flash
     model:
