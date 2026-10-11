@@ -49,4 +49,16 @@ public class HelloController {
                 .stream()
                 .content();
     }
+
+    /**
+     * 流式输出+流式提示词API
+     */
+    @GetMapping(value = "ask2",produces = "text/html;charset=UTF-8")
+    public Flux<String> ask2(String topic){
+        return chatClient.prompt()
+                .system("你是一个专业的书评助手")
+                .user(u->u.text("请给我推荐3本关于{topic}的书籍,只输出书名").param("topic",topic))
+                .stream()
+                .content();
+    }
 }
