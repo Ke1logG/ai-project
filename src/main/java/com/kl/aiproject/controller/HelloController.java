@@ -16,6 +16,9 @@ public class HelloController {
     @Autowired
     private ChatClient chatClient;
 
+    @Autowired
+    private ChatClient chatClient2;
+
     /**
      * 阻塞式同步输出
      */
@@ -59,6 +62,18 @@ public class HelloController {
                 .system("你是一个专业的书评助手")
                 .user(u->u.text("请给我推荐3本关于{topic}的书籍,只输出书名").param("topic",topic))
                 .stream()
+                .content();
+    }
+
+
+    /**
+     * 简单系统提示词测试
+     */
+    @GetMapping("/ask3")
+    public String ask3(String question){
+        return chatClient2.prompt()
+                .user(question)
+                .call()
                 .content();
     }
 }

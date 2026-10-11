@@ -15,4 +15,13 @@ public class AiConfiguration {
                 .defaultAdvisors(new SimpleLoggerAdvisor())
                 .build();
     }
+
+    @Bean
+    public ChatClient chatClient2(OpenAiChatModel model){
+        String systemPrompt = "你是一名资深Java开发工程师，只能回答Java相关问题，要求回答简洁易懂，且内容不能太长";
+        return ChatClient.builder(model)
+                .defaultSystem(systemPrompt)
+                .defaultAdvisors(new SimpleLoggerAdvisor())
+                .build();
+    }
 }
