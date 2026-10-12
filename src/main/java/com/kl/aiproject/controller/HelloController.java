@@ -1,6 +1,7 @@
 package com.kl.aiproject.controller;
 
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.chat.prompt.PromptTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -120,5 +121,18 @@ public class HelloController {
         System.out.println(bookReview);
         return bookReview+"";
 
+    }
+
+
+    /**
+     * 大模型记忆功能与多用户记忆隔离
+     */
+    @GetMapping("/ai3")
+    public String ai3(String question,String Id){
+        return chatClient.prompt()
+                .user(question)
+                .advisors(a->a.param(ChatMemory.CONVERSATION_ID,Id))
+                .call()
+                .content();
     }
 }
