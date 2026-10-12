@@ -4,6 +4,7 @@ import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.chat.prompt.PromptTemplate;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -96,6 +97,28 @@ public class HelloController {
                 .entity(TopicBook.class);
         System.out.println(topicBook);
         return topicBook+"";
+
+    }
+
+    /**
+     * record定义简单一次性类
+     */
+    public record BookReview(String reviewerName, String comment){}
+
+
+    /**
+     * 结构化输出，将回答映射为Java集合对象
+     */
+    @GetMapping(value = "ask5")
+    public String ask5(String topic){
+        List<BookReview> bookReview =  chatClient.prompt()
+                .system("你是一个专业的书评助手")
+                .user(u->u.text("请给我三条关于书籍“{topic}”的评价,输出评价人和评价内容").param("topic",topic))
+                .call()
+                .entity(new ParameterizedTypeReference<List<BookReview>>() {
+                });
+        System.out.println(bookReview);
+        return bookReview+"";
 
     }
 }
