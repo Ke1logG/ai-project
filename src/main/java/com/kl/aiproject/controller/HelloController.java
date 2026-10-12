@@ -1,5 +1,6 @@
 package com.kl.aiproject.controller;
 
+import com.kl.aiproject.tool.DateTimeTools;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.prompt.Prompt;
@@ -21,6 +22,9 @@ public class HelloController {
 
     @Autowired
     private ChatClient chatClient2;
+
+    @Autowired
+    private DateTimeTools dateTimeTools;
 
     /**
      * 阻塞式同步输出
@@ -132,6 +136,18 @@ public class HelloController {
         return chatClient.prompt()
                 .user(question)
                 .advisors(a->a.param(ChatMemory.CONVERSATION_ID,Id))
+                .call()
+                .content();
+    }
+
+    /**
+     * 大模型调用简单工具
+     */
+    @GetMapping("/ai4")
+    public String ai4(String question){
+        return chatClient.prompt()
+                .user(question)
+                .tools(dateTimeTools)
                 .call()
                 .content();
     }

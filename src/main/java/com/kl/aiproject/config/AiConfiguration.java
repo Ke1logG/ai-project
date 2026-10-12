@@ -16,7 +16,8 @@ public class AiConfiguration {
     @Bean 
     public ChatClient chatClient(OpenAiChatModel model,ChatMemory chatMemory){
         return ChatClient.builder(model)
-                .defaultAdvisors(new SimpleLoggerAdvisor(), MessageChatMemoryAdvisor.builder(chatMemory).build())
+                .defaultAdvisors(new SimpleLoggerAdvisor()/*,
+                        MessageChatMemoryAdvisor.builder(chatMemory).build()*/)
                 .build();
     }
 
