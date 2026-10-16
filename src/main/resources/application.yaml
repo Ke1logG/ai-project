@@ -7,8 +7,9 @@ spring:
       base-url: https://maas.qianwenaiapi.com/compatible-mode/v1
       chat:
         model: qwen3.8-flash
+      embedding:
+        model: qwen3.7-text-embedding-flash
     model:
-      embedding: none
       image: none
       moderation: none
       audio:
