@@ -2,6 +2,7 @@ package com.kl.aiproject.controller;
 
 import org.springframework.ai.document.Document;
 import org.springframework.ai.openai.OpenAiEmbeddingModel;
+import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.SimpleVectorStore;
 import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -44,6 +45,21 @@ public class MyEmbController {
         vectorStore.add(doc);
         return "ok";
     }
+
+    /**
+     * 简单向量数据库使用-查询
+     */
+    @RequestMapping("/query")
+    public String query(){
+        SearchRequest request = SearchRequest.builder()
+                .query("好看的日本动画有什么？")
+                .topK(2)
+                .build();
+        List<Document> result = vectorStore.similaritySearch(request);
+        System.out.println(result);
+        return "ok";
+    }
+
 
 
 
