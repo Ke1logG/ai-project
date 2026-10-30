@@ -1,0 +1,39 @@
+AI 学习项目运行说明与问题记录
+
+一、运行环境与启动方式
+
+项目需要 JDK 21 和 Maven。启动前必须设置环境变量 ALI-API-KEY，值为通义千问兼容模式接口的密钥。可以用 mvnw spring-boot:run 启动，也可以直接运行 AiProjectApplication 的 main 方法。服务默认监听 8080 端口。
+
+二、文档解析能力
+
+项目支持的文件格式只有 txt 和 md。DocumentParseUtil 会先取文件路径最后一个点后面的部分作为后缀，并转换成小写，然后按后缀选择读取器：txt 和 text 使用 TextReader，md 和 markdown 使用 MarkdownDocumentReader，其他后缀直接抛出 IllegalArgumentException，提示不支持的文件格式。
+
+MarkdownDocumentReader 会把 Markdown 文档按标题切分成多个 Document，列表项和换行会被转换成空格。TextReader 默认使用 UTF-8 编码，如果遇到 GBK 编码的中文 txt，需要调用 setCharset 指定编码。
+
+由于没有引入 tika 依赖，pdf、doc、docx 都无法解析。
+
+三、文本切分配置
+
+TextSplitterConfiguration 中定义了一个 TokenTextSplitter Bean，chunkSize 设置为 50，maxNumChunks 设置为 1000。chunkSize 的单位是 token，不是字符，中文大约一个字对应一到两个 token，所以每块通常只有几十个汉字。
+
+TokenTextSplitter 默认会把英文句号、问号、感叹号和换行当作标点，中文标点不参与截断。minChunkSizeChars 默认是 350，只有标点位置超过这个字符数才会截断，所以 chunkSize 为 50 时基本不会触发按标点截断，实际就是按 token 硬切。太短的块会被丢弃，默认阈值是 5 个字符。
+
+四、向量入库流程
+
+调用 addDocs 接口时，会逐个文件执行三步：先由 DocumentParseUtil 解析成 Document 列表，再由 TokenTextSplitter 切分成多个小块，最后调用 vectorStore.add 写入向量库。写入时会对每个块调用一次向量模型，把文本转换成向量。
+
+每个切出来的块都会生成新的 UUID，并继承原文档的 metadata，同时增加 parent_document_id、chunk_index、total_chunks 三个字段。因为块 ID 每次都不同，重复调用 addDocs 不会覆盖旧数据，而是重复入库，检索时可能出现内容相同的多条结果。
+
+SimpleVectorStore 是纯内存实现，应用重启后数据全部丢失，必须重新调用 addDocs。
+
+五、RAG 实现思路
+
+最简单的 RAG 分五步：读取 txt 或 md 文件，切分成块，调用向量模型入库，用户提问时先做相似度检索，把检索到的文本拼进系统提示词，再让对话模型回答。
+
+当前没有引入 spring-ai-advisors-vector-store，所以不能使用 QuestionAnswerAdvisor，采用手动检索加提示词拼接的方式。检索时用 SearchRequest 设置查询词和 topK，再把命中的 Document 文本拼接成上下文。
+
+一个常见问题是块切得太小导致检索不到完整信息，可以适当提高 topK，或者把 chunkSize 调到 300 到 500 之间。
+
+六、调试与日志
+
+application.yaml 把 org.springframework.ai 的日志级别设置成 debug，可以看到请求和响应的详细内容。SimpleLoggerAdvisor 会在每个 ChatClient 调用时打印提示词和模型响应。MyLoggerAdvisor 目前没有被注册，所以不会输出日志。
