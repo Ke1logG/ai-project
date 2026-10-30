@@ -13,7 +13,7 @@ public class TextSplitterConfiguration {
     @Bean
     public TokenTextSplitter tokenTextSplitter(){
         return TokenTextSplitter.builder()
-                .withChunkSize(50)
+                .withChunkSize(500)
                 .withMaxNumChunks(1000)
                 .build();
 

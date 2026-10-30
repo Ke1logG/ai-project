@@ -5,11 +5,13 @@ import com.kl.aiproject.advisor.MyLoggerAdvisor;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
 import org.springframework.ai.chat.client.advisor.SimpleLoggerAdvisor;
+import org.springframework.ai.chat.client.advisor.vectorstore.QuestionAnswerAdvisor;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.memory.InMemoryChatMemoryRepository;
 import org.springframework.ai.chat.memory.MessageWindowChatMemory;
 import org.springframework.ai.embedding.EmbeddingModel;
 import org.springframework.ai.openai.OpenAiChatModel;
+import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.SimpleVectorStore;
 import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.context.annotation.Bean;
@@ -31,6 +33,22 @@ public class AiConfiguration {
         return ChatClient.builder(model)
                 .defaultSystem(systemPrompt)
                 .defaultAdvisors(new SimpleLoggerAdvisor())
+                .build();
+    }
+
+    /**
+     * RAG 专用 ChatClient：QuestionAnswerAdvisor 会自动检索向量库并把命中的文本拼进提示词
+     */
+    @Bean
+    public ChatClient ragChatClient(OpenAiChatModel model, VectorStore vectorStore) {
+        return ChatClient.builder(model)
+                .defaultAdvisors(
+                        QuestionAnswerAdvisor.builder(vectorStore)
+                                .searchRequest(SearchRequest.builder()
+                                        .topK(5)
+                                        //.similarityThreshold(0.5)//相似度范围，区间为0-1，这里表示只取大于0.5匹配度的答案
+                                        .build())
+                                .build())
                 .build();
     }
 
