@@ -24,6 +24,8 @@ public class RagController {
 
     @RequestMapping("/addDocs")
     public String addDocs(){
+        addChunkedDocuments("D:/AI-project/ai-project/upload/project-intro.md", "project-intro.md");
+        addChunkedDocuments("D:/AI-project/ai-project/upload/project-runbook.txt", "project-runbook.txt");
         return "ok";
     }
 
