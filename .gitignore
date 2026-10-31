@@ -49,3 +49,7 @@ Thumbs.db
 .mvn/
 mvnw
 mvnw.cmd
+
+### Claude Code 本地配置 ###
+CLAUDE.md
+.claude/
