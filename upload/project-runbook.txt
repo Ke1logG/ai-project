@@ -4,6 +4,8 @@ AI 学习项目运行说明与问题记录
 
 项目需要 JDK 21 和 Maven。启动前必须设置环境变量 ALI-API-KEY，值为通义千问兼容模式接口的密钥。可以用 mvnw spring-boot:run 启动，也可以直接运行 AiProjectApplication 的 main 方法；Windows 下可以使用 mvnw.cmd。服务默认监听 8080 端口。
 
+MCP 示例还需要本机安装 Node 24 以上和 npx。应用启动时不会拉起 MCP server，首次访问 /mcp 接口时才启动。
+
 测试目前只有 contextLoads 一个用例，可以用 mvnw test 或 mvnw test -Dtest=AiProjectApplicationTests 运行。因为测试会加载完整的 Spring 上下文，缺少 ALI-API-KEY 时同样会失败。项目没有配置 lint 或格式化插件。
 
 常用命令：
@@ -20,6 +22,8 @@ spring.ai.openai.api-key 引用环境变量 ALI-API-KEY，没有硬编码密钥�
 spring.ai.openai.base-url 是 https://maas.qianwenaiapi.com/compatible-mode/v1。
 对话模型是 qwen3.8-flash，向量模型是 qwen3.7-text-embedding-flash。
 spring.ai.model 下的 image、moderation、audio.speech、audio.transcription 都设置为 none，避免自动配置创建用不到的模型 Bean。
+spring.ai.mcp.client.initialized 为 false，首次访问 /mcp 接口时才初始化 MCP 客户端。
+spring.ai.mcp.client.stdio.connections.filesystem 使用 cmd /c npx 启动 filesystem server，允许目录为 D:/AI-project/ai-project/upload。
 org.springframework.ai 的日志级别是 debug，会输出完整提示词和模型响应，日志比较吵。
 
 三、文档解析能力
@@ -48,7 +52,17 @@ TextSplitterConfiguration 中定义了一个 TokenTextSplitter Bean：chunkSize 
 
 SimpleVectorStore 是纯内存实现，应用重启后数据全部丢失，必须重新调用 /addDocs。/addDocs 中的文件路径是硬编码的绝对路径，换机器或换目录后需要修改代码。
 
-六、RAG 实现思路
+六、MCP 客户端
+
+MCP 使用 spring-ai-starter-mcp-client 和 stdio 传输。首次访问 /mcp/tools 或 /mcp/chat 时，MCP 客户端会启动 npx 的 filesystem server，握手后通过 tools/list 获取工具；应用启动时不会启动该进程。
+
+/mcp/tools 不经过模型，直接列出工具；/mcp/chat 让模型按需调用 MCP 工具。客户端用 McpToolFilter 只放行 8 个只读工具，server 只允许访问 upload 目录。
+
+Windows 下命令必须写成 cmd /c npx，直接写 npx 可能找不到 npx.cmd。初始化超时默认 20 秒，代码里用 McpClientCustomizer 调到了 120 秒；首次运行建议先执行 npx -y @modelcontextprotocol/server-filesystem@2.1.0 "D:/AI-project/ai-project/upload" 预热缓存。
+
+工具返回的文件内容会作为工具消息发给远程模型，不要把 MCP 目录指向敏感文件。
+
+七、RAG 实现思路
 
 当前的 RAG 使用 Spring AI 2.0.1 的 QuestionAnswerAdvisor，依赖模块名是 spring-ai-vector-store-advisor。1.0 时代的 spring-ai-advisors-vector-store 在本项目的 BOM 中不存在。
 
@@ -58,24 +72,28 @@ QuestionAnswerAdvisor 的默认提示词模板包含 {query} 和 {question_answe
 
 /query2 是不带模型的手动检索示例，用 SearchRequest 设置 query 和 topK 为 5，直接返回 similaritySearch 的结果。
 
-七、检索调参
+八、检索调参
 
 similarityThreshold 默认为 0.0，表示不过滤。通义 embedding 对中文短文本的余弦相似度常见在 0.3 到 0.5 之间；如果直接把阈值设到 0.5，很可能过滤掉全部结果，模型只能回答无法回答。调整阈值前应先用真实检索分数校准。
 
 如果检索不到完整信息，可以适当提高 topK，或者把 chunkSize 调到 300 到 500 之间。chunkSize 过小会把一段完整的说明拆散，过大则会让检索结果混入较多无关内容。
 
-八、调试与日志
+九、调试与日志
 
-application.yaml 把 org.springframework.ai 的日志级别设为 debug，可以看到完整的提示词和响应。SimpleLoggerAdvisor 挂在 chatClient 和 chatClient2 上，每次调用都会打印提示词和模型响应。ragChatClient 只挂载了 QuestionAnswerAdvisor，没有挂 SimpleLoggerAdvisor，但 debug 日志仍然能看到请求内容。
+application.yaml 把 org.springframework.ai 的日志级别设为 debug，可以看到完整的提示词和响应。SimpleLoggerAdvisor 挂在 chatClient、chatClient2 和 mcpChatClient 上，每次调用都会打印提示词和模型响应。ragChatClient 只挂载了 QuestionAnswerAdvisor，没有挂 SimpleLoggerAdvisor，但 debug 日志仍然能看到请求内容。
 
 MyLoggerAdvisor 虽然实现了 CallAdvisor 和 StreamAdvisor，但没有注册到任何 ChatClient，因此不会输出日志。
 
-九、已知问题
+十、已知问题
 
 /ai3 传入 conversationId 用于测试多用户记忆隔离，但 MessageChatMemoryAdvisor 的注册代码被注释掉，所以实际没有记忆效果。另外这个接口的参数名是大写的 Id，请求时不要写成小写 id。
 
 MyEmbController 的 /emb 和 /query 只把结果打印到控制台，接口返回 ok；只有 /query2 会返回检索结果。
 
 /ai4 通过 tools 传入 DateTimeTools，模型可以自己决定是否调用。DateTimeTools 通过 LocaleContextHolder 获取时区，返回 yyyy-MM-dd HH:mm:ss 格式的当前时间。
+
+MCP 首次调用会启动 npx 子进程，响应比普通接口慢。停止应用后如果仍有 node 进程残留，可以用 tasklist 找到 PID，再执行 taskkill /PID 进程号 /T /F。
+
+Git Bash 下用 curl 传中文查询参数会按本地编码发送，Tomcat 按 UTF-8 解码失败并返回 400；改用浏览器或 Python 以 UTF-8 发送即可。
 
 项目没有做异常处理、鉴权和完整的测试用例。RAG 链路没有自动化测试，验证方式是启动应用后先调用 /addDocs，再调用 /query2 或 /ask_rag。修改 upload 下的语料后，需要重新入库才会生效。

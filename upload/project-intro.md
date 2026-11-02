@@ -2,7 +2,7 @@
 
 ## 项目概览
 
-这是一个用于学习 Spring AI 的 Java demo 项目，包名为 com.kl.aiproject。项目没有业务逻辑，每个功能对应一个 HTTP 测试接口，覆盖同步对话、流式输出、提示词模板、结构化输出、对话记忆、工具调用、文本向量化、相似度检索，以及基于文档的 RAG 问答。代码按 git 提交逐步演进，目前处于学习阶段。
+这是一个用于学习 Spring AI 的 Java demo 项目，包名为 com.kl.aiproject。项目没有业务逻辑，每个功能对应一个 HTTP 测试接口，覆盖同步对话、流式输出、提示词模板、结构化输出、对话记忆、工具调用、MCP 工具调用、文本向量化、相似度检索，以及基于文档的 RAG 问答。代码按 git 提交逐步演进，目前处于学习阶段。
 
 启动前必须设置环境变量 ALI-API-KEY，application.yaml 通过 ${ALI-API-KEY} 引用它。变量缺失时，应用和 @SpringBootTest 都会在上下文初始化阶段失败。
 
@@ -10,13 +10,14 @@
 
 项目使用 JDK 21 和 Maven 构建。父工程是 spring-boot-starter-parent，版本 4.1.1；Spring AI 版本是 2.0.1，通过 spring-ai-bom 统一管理。
 
-pom.xml 中直接引入的依赖有五个：
+pom.xml 中直接引入的依赖有六个：
 
 - spring-boot-starter-webmvc：提供 Web 和 REST 能力
 - spring-ai-starter-model-openai：接入 OpenAI 兼容协议的对话和向量模型
 - spring-ai-vector-store：提供 SimpleVectorStore 和相似度检索能力
 - spring-ai-vector-store-advisor：提供 QuestionAnswerAdvisor，用于 RAG
 - spring-ai-markdown-document-reader：提供 MarkdownDocumentReader
+- spring-ai-starter-mcp-client：提供 MCP 客户端，支持 stdio 和 HTTP 传输
 
 Document、TextReader、TokenTextSplitter 等类由 spring-ai-model 和 spring-ai-commons 传递引入，不需要单独声明。项目没有引入 spring-ai-tika-document-reader，因此不能解析 pdf、doc、docx 文件。
 
@@ -41,9 +42,11 @@ com.kl.aiproject 包下分为以下几部分：
 - AiProjectApplication：Spring Boot 启动类
 - config/AiConfiguration：集中定义 ChatClient、ChatClient2、ragChatClient、ChatMemory、VectorStore 五个 Bean
 - config/TextSplitterConfiguration：定义 TokenTextSplitter Bean
+- config/McpConfiguration：定义 mcpChatClient、MCP 初始化超时和只读工具过滤器
 - controller/HelloController：对话、提示词、结构化输出、记忆、工具调用的测试接口
 - controller/MyEmbController：向量化、向量入库、相似度检索的测试接口
 - controller/RagController：文档入库和 RAG 问答接口
+- controller/McpController：MCP 工具列表和对话接口
 - util/DocumentParseUtil：按文件后缀选择 DocumentReader
 - advisor/MyLoggerAdvisor：自定义日志 Advisor，目前没有注册到任何 ChatClient
 - tool/DateTimeTools：提供获取当前时间的工具
@@ -60,7 +63,15 @@ chatMemory：MessageWindowChatMemory，窗口大小为 10 条消息，底层使�
 
 vectorStore：SimpleVectorStore，使用注入的 EmbeddingModel 构建，数据保存在内存中。
 
-三个 ChatClient 类型相同，注入时字段名必须与 Bean 名一致，或者显式使用 @Qualifier。
+四个 ChatClient 类型相同（mcpChatClient 定义在 McpConfiguration 中），注入时字段名必须与 Bean 名一致，或者显式使用 @Qualifier。
+
+## McpConfiguration 中的 Bean
+
+mcpChatClient：MCP 专用客户端，通过 @Qualifier 注入 mcpToolCallbacks，并挂 SimpleLoggerAdvisor。
+
+mcpInitializationTimeout：McpClientCustomizer，把 MCP 初始化超时从默认 20 秒调到 120 秒。
+
+readOnlyMcpToolFilter：McpToolFilter，只放行 list_*、read_*、get_file_info、search_files、directory_tree 这 8 个只读工具。
 
 ## HelloController 的接口
 
@@ -86,6 +97,11 @@ vectorStore：SimpleVectorStore，使用注入的 EmbeddingModel 构建，数据
 - /query2：手动构造 SearchRequest，query 为用户问题，topK 为 5，调用 similaritySearch 并返回检索结果
 - /ask_rag：调用 ragChatClient，由 QuestionAnswerAdvisor 自动检索并把上下文拼进用户消息，再让对话模型生成回答
 
+## McpController 的接口
+
+- /mcp/tools：直接调用 getToolCallbacks 列出 MCP Server 暴露的工具，不经过模型
+- /mcp/chat：调用 mcpChatClient，模型按需通过 MCP 工具读取 upload 目录下的文件
+
 ## RAG 数据流
 
 upload 下的 md 和 txt 文件先由 DocumentParseUtil 解析成 Document 列表，再由 TokenTextSplitter 切分成块，最后通过 SimpleVectorStore.add 逐块调用向量模型写入内存向量库。
@@ -95,6 +111,12 @@ upload 下的 md 和 txt 文件先由 DocumentParseUtil 解析成 Document 列�
 Advisor 只拼接 Document 的文本，不拼接 metadata；MarkdownDocumentReader 写进 metadata 的 title 不会出现在上下文里。
 
 /query2 是手动检索示例，直接调用 similaritySearch，只返回检索结果，不经过模型。
+
+## MCP 数据流
+
+application.yaml 配置了 stdio 连接，首次访问 /mcp 接口时启动 npx 的 filesystem server，并只允许访问 upload 目录。MCP 客户端先 initialize 握手，再通过 tools/list 获取工具；用户提问时模型返回 tool_calls，Spring 通过 JSON-RPC 的 tools/call 让 server 执行，再把结果作为工具消息发回模型。
+
+initialized 为 false，所以应用启动时不会拉起 npx。模型本身不能读文件，真正读取的是本机的 Node 进程。
 
 ## 文档解析与文本切分
 
@@ -124,4 +146,7 @@ upload/project-intro.md 和 upload/project-runbook.txt 是 RAG 演示用的语�
 - MyLoggerAdvisor 已经写好，但没有注册到任何 ChatClient
 - SimpleVectorStore 是内存实现，应用重启后数据会丢失
 - 重复调用 /addDocs 会重复入库，不会覆盖旧数据
+- MCP 需要本机安装 Node 24 以上，首次运行要下载 npx 包
+- MCP server 只允许访问 upload 目录，客户端只暴露 8 个只读工具
+- 工具返回的文件内容会发送给远程模型
 - 项目追求最小可运行示例，没有做异常处理、鉴权和完整的测试用例
