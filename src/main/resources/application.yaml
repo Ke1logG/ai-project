@@ -15,6 +15,22 @@ spring:
       audio:
         speech: none
         transcription: none
+    mcp:
+      client:
+        # 启动时不初始化；首次访问 /mcp 接口时才拉起 npx
+        initialized: false
+        # 普通 MCP 请求超时（不影响初始化超时）
+        request-timeout: 60s
+        stdio:
+          connections:
+            filesystem:
+              command: cmd
+              args:
+                - "/c"
+                - "npx"
+                - "-y"
+                - "@modelcontextprotocol/server-filesystem@2.1.0"
+                - "D:/AI-project/ai-project/upload"
 logging:
   charset:
     console: UTF-8
