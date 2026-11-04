@@ -2,7 +2,7 @@
 
 ## 项目概览
 
-这是一个用于学习 Spring AI 的 Java demo 项目，包名为 com.kl.aiproject。项目没有业务逻辑，每个功能对应一个 HTTP 测试接口，覆盖同步对话、流式输出、提示词模板、结构化输出、对话记忆、工具调用、MCP 工具调用、文本向量化、相似度检索，以及基于文档的 RAG 问答。代码按 git 提交逐步演进，目前处于学习阶段。
+这是一个用于学习 Spring AI 的 Java demo 项目，包名为 com.kl.aiproject。项目没有业务逻辑，每个功能对应一个 HTTP 测试接口，覆盖同步对话、流式输出、提示词模板、结构化输出、对话记忆、工具调用、MCP 工具调用、文本向量化、相似度检索、基于文档的 RAG 问答，以及带来源引用的 RAG 和静态预览页。代码按 git 提交逐步演进，目前处于学习阶段。
 
 启动前必须设置环境变量 ALI-API-KEY，application.yaml 通过 ${ALI-API-KEY} 引用它。变量缺失时，应用和 @SpringBootTest 都会在上下文初始化阶段失败。
 
@@ -47,6 +47,7 @@ com.kl.aiproject 包下分为以下几部分：
 - controller/MyEmbController：向量化、向量入库、相似度检索的测试接口
 - controller/RagController：文档入库和 RAG 问答接口
 - controller/McpController：MCP 工具列表和对话接口
+- resources/static/rag.html：RAG 预览页，调用 /ask_rag_sources 并渲染回答与来源
 - util/DocumentParseUtil：按文件后缀选择 DocumentReader
 - advisor/MyLoggerAdvisor：自定义日志 Advisor，目前没有注册到任何 ChatClient
 - tool/DateTimeTools：提供获取当前时间的工具
@@ -96,6 +97,7 @@ readOnlyMcpToolFilter：McpToolFilter，只放行 list_*、read_*、get_file_inf
 - /addDocs：把 upload/project-intro.md 和 upload/project-runbook.txt 依次解析、切块并写入向量库。文件路径硬编码为 D:/AI-project/ai-project/upload/...
 - /query2：手动构造 SearchRequest，query 为用户问题，topK 为 5，调用 similaritySearch 并返回检索结果
 - /ask_rag：调用 ragChatClient，由 QuestionAnswerAdvisor 自动检索并把上下文拼进用户消息，再让对话模型生成回答
+- /ask_rag_sources：手动检索 topK=5，给上下文编号并要求模型用 [n] 标注来源，返回 answer 和 sources 列表
 
 ## McpController 的接口
 
@@ -112,6 +114,14 @@ Advisor 只拼接 Document 的文本，不拼接 metadata；MarkdownDocumentRead
 
 /query2 是手动检索示例，直接调用 similaritySearch，只返回检索结果，不经过模型。
 
+## 带来源的 RAG
+
+/ask_rag_sources 不使用 QuestionAnswerAdvisor，而是手动调用 similaritySearch 取 topK=5，把每个块拼成“[n] 来源：文件名，第 x 块”的编号上下文，再交给基础 chatClient。system 提示词要求只根据上下文回答，并用 [n] 标注来源。
+
+返回结构是 RagSourceAnswer，包含 answer 和 sources；sources 的每项有 index、source、title、chunkIndex、score、preview，preview 只截取正文前 120 个字符。页面 rag.html 通过 fetch 调用这个接口，用纯文本展示回答，并把 sources 渲染成卡片。
+
+为了显示文件名，md 读取时通过 MarkdownDocumentReaderConfig 的 additionalMetadata 补了 source metadata；txt 的 source 由 TextReader 自动写入。
+
 ## MCP 数据流
 
 application.yaml 配置了 stdio 连接，首次访问 /mcp 接口时启动 npx 的 filesystem server，并只允许访问 upload 目录。MCP 客户端先 initialize 握手，再通过 tools/list 获取工具；用户提问时模型返回 tool_calls，Spring 通过 JSON-RPC 的 tools/call 让 server 执行，再把结果作为工具消息发回模型。
@@ -120,7 +130,7 @@ initialized 为 false，所以应用启动时不会拉起 npx。模型本身不�
 
 ## 文档解析与文本切分
 
-DocumentParseUtil 取文件路径最后一个点后面的部分作为后缀并转成小写。txt 和 text 使用 TextReader；md 使用 MarkdownDocumentReader，配置为 defaultConfig；其他后缀直接抛出 IllegalArgumentException，提示不支持的文件格式。注意后缀 markdown 并不在支持列表里。
+DocumentParseUtil 取文件路径最后一个点后面的部分作为后缀并转成小写。txt 和 text 使用 TextReader；md 使用 MarkdownDocumentReader，并通过 MarkdownDocumentReaderConfig 补一个 source metadata（文件名）；其他后缀直接抛出 IllegalArgumentException，提示不支持的文件格式。注意后缀 markdown 并不在支持列表里。
 
 TextReader 默认使用 UTF-8 编码，把整个文件读成一个 Document，metadata 中包含 charset 和 source，source 的值是文件名。如果遇到 GBK 编码的中文 txt，需要调用 setCharset 指定编码。
 
@@ -149,4 +159,6 @@ upload/project-intro.md 和 upload/project-runbook.txt 是 RAG 演示用的语�
 - MCP 需要本机安装 Node 24 以上，首次运行要下载 npx 包
 - MCP server 只允许访问 upload 目录，客户端只暴露 8 个只读工具
 - 工具返回的文件内容会发送给远程模型
+- /ask_rag_sources 的 answer 是模型自由文本，页面按纯文本展示；sources 的 preview 只有前 120 字
+- rag.html 必须通过 http://localhost:8080/rag.html 访问，直接双击文件无法调用接口
 - 项目追求最小可运行示例，没有做异常处理、鉴权和完整的测试用例

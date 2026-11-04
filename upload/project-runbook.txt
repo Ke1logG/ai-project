@@ -28,11 +28,11 @@ org.springframework.ai 的日志级别是 debug，会输出完整提示词和模
 
 三、文档解析能力
 
-项目支持的文件格式只有 txt、text 和 md。DocumentParseUtil 取文件路径最后一个点后面的后缀并转成小写，然后选择读取器：txt 和 text 使用 TextReader，md 使用 MarkdownDocumentReader。后缀 markdown 不在支持范围内。其他后缀会抛出 IllegalArgumentException，提示不支持的文件格式。
+项目支持的文件格式只有 txt、text 和 md。DocumentParseUtil 取文件路径最后一个点后面的后缀并转成小写，然后选择读取器：txt 和 text 使用 TextReader，md 使用 MarkdownDocumentReader，并通过 additionalMetadata 写入 source（文件名）。后缀 markdown 不在支持范围内。其他后缀会抛出 IllegalArgumentException，提示不支持的文件格式。
 
 TextReader 默认使用 UTF-8 编码，把整个文件读成一个 Document，metadata 中包含 charset 和 source 两个字段，source 的值是文件名。如果文件是 GBK 编码，需要调用 setCharset 指定编码。
 
-MarkdownDocumentReader 使用默认配置。它按标题把文档切成多个 Document：遇到标题时先结束上一段，标题文字写入 metadata 的 title 和 category（category 形如 header_1、header_2），不进入正文；列表项、软换行和硬换行会被转换成空格；默认情况下水平分割线不切分文档；代码块和引用块不并入正文段落。它不会写入 source metadata。
+MarkdownDocumentReader 按标题把文档切成多个 Document：遇到标题时先结束上一段，标题文字写入 metadata 的 title 和 category（category 形如 header_1、header_2），不进入正文；列表项、软换行和硬换行会被转换成空格；默认情况下水平分割线不切分文档；代码块和引用块不并入正文段落。source 由 additionalMetadata 补充，值是文件名。
 
 由于没有引入 Tika 依赖，pdf、doc、docx 都无法解析。
 
@@ -72,6 +72,10 @@ QuestionAnswerAdvisor 的默认提示词模板包含 {query} 和 {question_answe
 
 /query2 是不带模型的手动检索示例，用 SearchRequest 设置 query 和 topK 为 5，直接返回 similaritySearch 的结果。
 
+/ask_rag_sources 是手动编排的版本：自己调用 similaritySearch 取 topK=5，把每个块拼成“[n] 来源：文件，第 x 块”的编号上下文，system 提示词要求用 [n] 标注来源，最后返回 answer 和 sources（index/source/title/chunkIndex/score/preview）。它不经过 QuestionAnswerAdvisor。
+
+静态预览页是 http://localhost:8080/rag.html，通过 fetch 调用 /ask_rag_sources，把回答按纯文本展示，并把来源渲染成卡片。
+
 八、检索调参
 
 similarityThreshold 默认为 0.0，表示不过滤。通义 embedding 对中文短文本的余弦相似度常见在 0.3 到 0.5 之间；如果直接把阈值设到 0.5，很可能过滤掉全部结果，模型只能回答无法回答。调整阈值前应先用真实检索分数校准。
@@ -95,5 +99,7 @@ MyEmbController 的 /emb 和 /query 只把结果打印到控制台，接口返�
 MCP 首次调用会启动 npx 子进程，响应比普通接口慢。停止应用后如果仍有 node 进程残留，可以用 tasklist 找到 PID，再执行 taskkill /PID 进程号 /T /F。
 
 Git Bash 下用 curl 传中文查询参数会按本地编码发送，Tomcat 按 UTF-8 解码失败并返回 400；改用浏览器或 Python 以 UTF-8 发送即可。
+
+rag.html 必须通过 http://localhost:8080/rag.html 访问，直接打开本地文件无法调用接口。回答按纯文本展示，Markdown 标记不会渲染；sources 的 preview 只有前 120 字。
 
 项目没有做异常处理、鉴权和完整的测试用例。RAG 链路没有自动化测试，验证方式是启动应用后先调用 /addDocs，再调用 /query2 或 /ask_rag。修改 upload 下的语料后，需要重新入库才会生效。
