@@ -22,7 +22,10 @@ public class DocumentParseUtil {
 
         DocumentReader reader = switch(suffix){
             case "txt","text" -> new TextReader(resource);
-            case "md" -> new MarkdownDocumentReader(resource,MarkdownDocumentReaderConfig.defaultConfig());
+            case "md" -> new MarkdownDocumentReader(resource,
+                    MarkdownDocumentReaderConfig.builder()
+                            .withAdditionalMetadata("source", file.getName())
+                            .build());
             default -> throw new IllegalArgumentException("不支持的文件格式"+suffix);
         };
         return reader.get();
